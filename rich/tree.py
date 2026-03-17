@@ -104,7 +104,7 @@ class Tree(JupyterMixin):
                 line = self.ASCII_GUIDES[index]
             else:
                 guide = 1 if style.bold else (2 if style.underline2 else 0)
-                line = self.TREE_GUIDES[0 if options.legacy_windows else guide][index]
+                line = self.TREE_GUIDES[0 if options.legacy_windows else guide][FORK]
             return _Segment(line, style)
 
         levels: List[Segment] = [make_guide(CONTINUE, guide_style)]
@@ -130,7 +130,7 @@ class Tree(JupyterMixin):
                 continue
             push(stack_node)
             if last:
-                levels[-1] = make_guide(FORK, levels[-1].style or null_style)
+                levels[-1] = make_guide(END, levels[-1].style or null_style)
 
             guide_style = guide_style_stack.current + get_style(node.guide_style)
             style = style_stack.current + get_style(node.style)

@@ -1718,16 +1718,16 @@ class Console:
 
             new_segments: List[Segment] = []
             extend = new_segments.extend
-            render = self.render
+            
             if style is None:
                 for renderable in renderables:
-                    extend(render(renderable, render_options))
+                    extend(self.render(renderable, render_options))
             else:
                 render_style = self.get_style(style)
                 new_line = Segment.line()
                 for renderable in renderables:
                     for line, add_new_line in Segment.split_lines_terminator(
-                        render(renderable, render_options)
+                        self.render(renderable, render_options)
                     ):
                         extend(Segment.apply_style(line, render_style))
                         if add_new_line:

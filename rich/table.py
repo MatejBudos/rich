@@ -485,7 +485,7 @@ class Table(JupyterMixin):
 
         extra_width = self._extra_width
 
-        widths = self._calculate_column_widths(
+        widths = self._calculate_column_widths(  # rozdelí dostupnú šírku medzi stĺpce
             console, options.update_width(max_width - extra_width)
         )
         table_width = sum(widths) + extra_width
@@ -502,19 +502,19 @@ class Table(JupyterMixin):
                 if isinstance(text, str)
                 else text
             )
-            return console.render(
+            return console.render(  # preloží text anotácie na Segment objekty
                 render_text, options=render_options.update(justify=justify)
             )
 
         if self.title:
-            yield from render_annotation(
+            yield from render_annotation(  # vykreslí nadpis nad tabuľkou
                 self.title,
                 style=Style.pick_first(self.title_style, "table.title"),
                 justify=self.title_justify,
             )
-        yield from self._render(console, render_options, widths)
+        yield from self._render(console, render_options, widths)  # vykreslí riadky a rámček
         if self.caption:
-            yield from render_annotation(
+            yield from render_annotation(  # vykreslí popis pod tabuľkou
                 self.caption,
                 style=Style.pick_first(self.caption_style, "table.caption"),
                 justify=self.caption_justify,
@@ -759,11 +759,11 @@ class Table(JupyterMixin):
 
         border_style = table_style + console.get_style(self.border_style or "")
         _column_cells = (
-            self._get_cells(console, column_index, column)
+            self._get_cells(console, column_index, column)  # vykreslí bunky jedného stĺpca
             for column_index, column in enumerate(self.columns)
         )
 
-        row_cells: List[Tuple[_Cell, ...]] = list(zip(*_column_cells))
+        row_cells: List[Tuple[_Cell, ...]] = list(zip(*_column_cells))  # transponuje stĺpce na riadky
         _box = (
             self.box.substitute(
                 options, safe=pick_bool(self.safe_box, console.safe_box)
@@ -802,7 +802,7 @@ class Table(JupyterMixin):
                 ),
             ]
             if show_edge:
-                yield _Segment(_box.get_top(widths), border_style)
+                yield _Segment(_box.get_top(widths), border_style)  # horný okraj ┏━━━┳━━━┓
                 yield new_line
         else:
             box_segments = []
@@ -810,7 +810,7 @@ class Table(JupyterMixin):
         get_row_style = self.get_row_style
         get_style = console.get_style
 
-        for index, (first, last, row_cell) in enumerate(loop_first_last(row_cells)):
+        for index, (last, first, row_cell) in enumerate(loop_first_last(row_cells)):  # iteruje riadky s príznakmi first/last
             header_row = first and show_header
             footer_row = last and show_footer
             row = (
@@ -835,7 +835,7 @@ class Table(JupyterMixin):
                     height=None,
                     highlight=column.highlight,
                 )
-                lines = console.render_lines(
+                lines = console.render_lines(  # preloží obsah bunky na riadky fixnej šírky
                     cell.renderable,
                     render_options,
                     style=get_style(cell.style) + row_style,
@@ -879,10 +879,10 @@ class Table(JupyterMixin):
             if _box:
                 if last and show_footer:
                     yield _Segment(
-                        _box.get_row(widths, "foot", edge=show_edge), border_style
+                        _box.get_row(widths, "foot", edge=show_edge), border_style  # oddeľovač pred päťtičkou
                     )
                     yield new_line
-                left, right, _divider = box_segments[0 if first else (2 if last else 1)]
+                left, right, _divider = box_segments[0 if first else (2 if last else 1)]  # vyberie znaky pre zvislé okraje tohto riadku
 
                 # If the column divider is whitespace also style it with the row background
                 divider = (
@@ -909,7 +909,7 @@ class Table(JupyterMixin):
                     yield new_line
             if _box and first and show_header:
                 yield _Segment(
-                    _box.get_row(widths, "head", edge=show_edge), border_style
+                    _box.get_row(widths, "head", edge=show_edge), border_style  # oddeľovač pod hlavičkou ┡━━━╇━━━┩
                 )
                 yield new_line
             end_section = row and row.end_section
@@ -931,7 +931,7 @@ class Table(JupyterMixin):
                     yield new_line
 
         if _box and show_edge:
-            yield _Segment(_box.get_bottom(widths), border_style)
+            yield _Segment(_box.get_bottom(widths), border_style)  # spodný okraj └───┴───┘
             yield new_line
 
 

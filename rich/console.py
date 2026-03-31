@@ -1302,8 +1302,22 @@ class Console:
     ) -> Iterable[Segment]:
         """Render an object in to an iterable of `Segment` instances.
 
-        This method contains the logic for rendering objects with the console protocol.
-        You are unlikely to need to use it directly, unless you are extending the library.
+        This is the central dispatch point of Rich's rendering pipeline.
+        Every object that can be displayed (Table, Text, Panel, …) must
+        implement the ConsoleRenderable protocol — i.e. have a
+        __rich_console__(console, options) method that yields Segments or
+        nested renderables.
+
+        Pipeline for a single renderable:
+          1. rich_cast()            — unwrap __rich__ wrappers, if any
+          2. __rich_console__()     — ask the object to produce a RenderResult
+          3. iterate RenderResult   — each item is either:
+               a. a Segment          → yield it directly to the output buffer
+               b. a nested renderable → recurse: self.render(nested, options)
+
+        This recursion is how complex objects like Table work: Table.__rich_console__
+        yields Segment objects for borders and calls console.render() for each cell's
+        content, which may itself be a Text object, and so on.
 
         Args:
             renderable (RenderableType): An object supporting the console protocol, or
@@ -1322,7 +1336,7 @@ class Console:
 
         renderable = rich_cast(renderable)
         if hasattr(renderable, "__rich_console__") and not isclass(renderable):
-            render_iterable = renderable.__rich_console__(self, _options)
+            render_iterable = renderable.__rich_console__(self, _options)  # požiada objekt, aby sa sám vykreslil
         elif isinstance(renderable, str):
             text_renderable = self.render_str(
                 renderable, highlight=_options.highlight, markup=_options.markup
@@ -1683,7 +1697,7 @@ class Console:
             new_line_start (bool, False): Insert a new line at the start if the output contains more than one line. Defaults to ``False``.
         """
         if not objects:
-            objects = (NewLine(),)
+            objects = (NewLine(),)  # prázdne volanie → vypíše prázdny riadok
 
         if soft_wrap is None:
             soft_wrap = self.soft_wrap
@@ -1695,7 +1709,7 @@ class Console:
             crop = False
         render_hooks = self._render_hooks[:]
         with self:
-            renderables = self._collect_renderables(
+            renderables = self._collect_renderables(  # preloží vstupné objekty na zoznam renderovateľných
                 objects,
                 sep,
                 end,
@@ -1705,8 +1719,8 @@ class Console:
                 highlight=highlight,
             )
             for hook in render_hooks:
-                renderables = hook.process_renderables(renderables)
-            render_options = self.options.update(
+                renderables = hook.process_renderables(renderables)  # každý hook môže upraviť zoznam renderovateľných
+            render_options = self.options.update(  # skombinuje globálne nastavenia konzoly s parametrami tohto volania
                 justify=justify,
                 overflow=overflow,
                 width=min(width, self.width) if width is not None else NO_CHANGE,
@@ -1718,10 +1732,10 @@ class Console:
 
             new_segments: List[Segment] = []
             extend = new_segments.extend
-            
+
             if style is None:
                 for renderable in renderables:
-                    extend(self.render(renderable, render_options))
+                    extend(self.render(renderable, render_options))  # spustí render pipeline
             else:
                 render_style = self.get_style(style)
                 new_line = Segment.line()
@@ -1729,7 +1743,7 @@ class Console:
                     for line, add_new_line in Segment.split_lines_terminator(
                         self.render(renderable, render_options)
                     ):
-                        extend(Segment.apply_style(line, render_style))
+                        extend(Segment.apply_style(line, render_style))  # aplikuje globálny štýl na každý segment riadku
                         if add_new_line:
                             new_segments.append(new_line)
 
@@ -1738,15 +1752,15 @@ class Console:
                     len("".join(segment.text for segment in new_segments).splitlines())
                     > 1
                 ):
-                    new_segments.insert(0, Segment.line())
+                    new_segments.insert(0, Segment.line())  # vloží prázdny riadok pred viacriadkový výstup
             if crop:
                 buffer_extend = self._buffer.extend
                 for line in Segment.split_and_crop_lines(
                     new_segments, self.width, pad=False
                 ):
-                    buffer_extend(line)
+                    buffer_extend(line)  # oreže každý riadok na šírku terminálu a zapíše do výstupného buffera
             else:
-                self._buffer.extend(new_segments)
+                self._buffer.extend(new_segments)  # bez orezu — zapíše segmenty priamo do buffera
 
     def print_json(
         self,

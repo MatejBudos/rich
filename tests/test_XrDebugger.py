@@ -15,16 +15,15 @@ from rich.text import Text
 
 def test_table_XRDebugger():
     """
-    Hlavička tabuľky má byť vykreslená tučnou čiarou (━━) navrchu.
-    Bug: first a last sú prehodené v _render() — hlavička dostane
+    Overuje správne vykreslenie rámčeka tabuľky (box-drawing znaky).
+
+    Rich Table pri renderovaní používa dva typy čiar:
+      - tučné (━━, ┃) pre hlavičku (prvý riadok)
+      - tenké (──, │) pre dátové riadky
+    Rozlíšenie zabezpečujú príznaky 'first' a 'last' z loop_first_last().
+    Bug: ich prehodenie v rozbalení tuple spôsobí, že hlavička dostane
     štýl posledného riadku a posledný riadok dostane štýl hlavičky.
 
-    Stack trace:
-        console.print(table)
-          → Console.render()
-            → Table.__rich_console__()
-              → Table._render()
-                → loop_first_last(row_cells)   ← tu je bug, first/last prehodené
     """
     console = Console(
         color_system=None,
@@ -54,4 +53,11 @@ def test_table_XRDebugger():
     # Overenie poradia — ┏ musí byť pred └
     assert result.index("┏") < result.index("└"), (
         "┏ (hlavička) musí byť pred └ (spodok) — sú prehodené"
+    )
+
+    # Overenie že ┡ (oddeľovač hlavičky) je ZA hlavičkou ale PRED dátami.
+    # Ak sú first/last prehodené v loop_first_last, ┡ sa objaví až za
+    # posledným riadkom (Carol) namiesto za hlavičkou (Player/Score).
+    assert result.index("┡") < result.index("Alice"), (
+        "Oddeľovač ┡ musí byť za hlavičkou (Player/Score), nie za posledným riadkom"
     )

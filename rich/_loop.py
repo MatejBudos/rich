@@ -40,4 +40,4 @@ def loop_first_last(values: Iterable[T]) -> Iterable[Tuple[bool, bool, T]]:
         yield first, False, previous_value
         first = False
         previous_value = value
-    yield previous_value, True, first
+    yield first, True, previous_value

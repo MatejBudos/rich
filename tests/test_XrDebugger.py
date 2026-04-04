@@ -43,10 +43,12 @@ def test_table_XRDebugger():
 
     == Bug v tomto teste ==
 
-    Rich Table vykresluje separator ┡━━━┩ pod hlavičkou.
-    Separator yieldue metóda _yield_row_segments() na základe parametra first/last.
-    Bug: použije sa nesprávny parameter, takže ┡ sa objaví až za posledným
-    riadkom (Carol) namiesto hneď za hlavičkou (Player/Score).
+    Rich Table pri renderovaní používa dva typy čiar:
+      - tučné (━━, ┃) pre hlavičku (prvý riadok)
+      - tenké (──, │) pre dátové riadky
+    Rozlíšenie zabezpečujú príznaky 'first' a 'last' z loop_first_last().
+    Bug: ich prehodenie v rozbalení tuple spôsobí, že hlavička dostane
+    štýl posledného riadku a posledný riadok dostane štýl hlavičky.
 
     """
     console = Console(
@@ -80,7 +82,7 @@ def test_table_XRDebugger():
     )
 
     # Overenie že ┡ (oddeľovač hlavičky) je ZA hlavičkou ale PRED dátami.
-    # Ak _yield_row_segments použije last namiesto first, ┡ sa objaví až za
+    # Ak sú first/last prehodené v loop_first_last, ┡ sa objaví až za
     # posledným riadkom (Carol) namiesto za hlavičkou (Player/Score).
     assert result.index("┡") < result.index("Alice"), (
         "Oddeľovač ┡ musí byť za hlavičkou (Player/Score), nie za posledným riadkom"

@@ -128,33 +128,21 @@ class Tree(JupyterMixin):
                     SPACE if last else CONTINUE, prefix[-1].style or Style.null(), options
                 )
 
-    def __rich_console__(
-        self, console: "Console", options: "ConsoleOptions"
+    def _walk_nodes(
+        self,
+        console: "Console",
+        options: "ConsoleOptions",
+        stack: List,
+        levels: List["Segment"],
+        guide_style_stack: "StyleStack",
+        style_stack: "StyleStack",
     ) -> "RenderResult":
-        """Iteratívne prechádza stromom a generuje Segment objekty pre každý uzol.
-
-        Používa explicitný zásobník (stack) namiesto rekurzie, aby zvládol
-        hlboké stromy bez rizika stack overflow. Pre každý uzol:
-          1. Určí typ vodiaceho znaku (FORK / END) podľa pozície uzla
-          2. Vykreslí label uzla cez console.render_lines()
-          3. Yieldue prefix (vodiace čiary) + riadky labelu
-          4. Ak má uzol deti, pridá ich iterátor na zásobník
-        """
-        stack: List[Iterator[Tuple[bool, "Tree"]]] = []
+        """Prechádza zásobníkom uzlov a generuje Segment objekty pre každý uzol."""
         pop = stack.pop
         push = stack.append
-
         get_style = console.get_style
         null_style = Style.null()
-        guide_style = get_style(self.guide_style, default="") or null_style
         SPACE, CONTINUE, FORK, END = range(4)
-
-        levels: List[Segment] = [self._make_guide(CONTINUE, guide_style, options)]
-        push(iter(loop_last([self])))
-
-        guide_style_stack = StyleStack(get_style(self.guide_style))
-        style_stack = StyleStack(get_style(self.style))
-
         depth = 0
 
         while stack:
@@ -200,8 +188,26 @@ class Tree(JupyterMixin):
                 )
                 style_stack.push(get_style(node.style))
                 guide_style_stack.push(get_style(node.guide_style))
-                push(iter(loop_first(node.children)))
+                push(iter(loop_first(node.children)))  # iteruje deti uzla s príznakom first/last
                 depth += 1
+
+    def __rich_console__(
+        self, console: "Console", options: "ConsoleOptions"
+    ) -> "RenderResult":
+        """Inicializuje zásobník a štýly, potom deleguje renderovanie na _walk_nodes()."""
+        get_style = console.get_style
+        null_style = Style.null()
+        guide_style = get_style(self.guide_style, default="") or null_style
+        SPACE, CONTINUE, FORK, END = range(4)
+
+        stack: List[Iterator[Tuple[bool, "Tree"]]] = []
+        levels: List[Segment] = [self._make_guide(CONTINUE, guide_style, options)]
+        stack.append(iter(loop_last([self])))
+
+        guide_style_stack = StyleStack(get_style(self.guide_style))
+        style_stack = StyleStack(get_style(self.style))
+
+        yield from self._walk_nodes(console, options, stack, levels, guide_style_stack, style_stack)
 
     def __rich_measure__(
         self, console: "Console", options: "ConsoleOptions"

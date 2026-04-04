@@ -97,7 +97,7 @@ class Tree(JupyterMixin):
             line = self.ASCII_GUIDES[index]
         else:
             guide = 1 if style.bold else (2 if style.underline2 else 0)
-            line = self.TREE_GUIDES[0 if options.legacy_windows else guide][FORK]
+            line = self.TREE_GUIDES[0 if options.legacy_windows else guide][index]
         return Segment(line, style)
 
     def _yield_node_label(
@@ -200,7 +200,7 @@ class Tree(JupyterMixin):
                 )
                 style_stack.push(get_style(node.style))
                 guide_style_stack.push(get_style(node.guide_style))
-                push(iter(loop_last(node.children)))
+                push(iter(loop_first(node.children)))
                 depth += 1
 
     def __rich_measure__(

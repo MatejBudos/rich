@@ -29,10 +29,15 @@ def loop_last(values: Iterable[T]) -> Iterable[Tuple[bool, T]]:
 
 
 def loop_first_last(values: Iterable[T]) -> Iterable[Tuple[bool, bool, T]]:
-    """Iterate and generate a tuple with a flag for first and last value."""
+    """Iterate and generate a tuple with a flag for first and last value.
+    Yields (first, last, value) pre každý prvok, kde:
+      - first je True iba pre prvý prvok sekvencie
+      - last  je True iba pre posledný prvok sekvencie
+    Poradie v tuple je vždy (first, last, value).
+    """
     iter_values = iter(values)
     try:
-        previous_value = next(iter_values)
+        previous_value = next(iter_values)  # načítame prvý prvok dopredu — pozri vysvetlenie nižšie
     except StopIteration:
         return
     first = True
@@ -40,4 +45,4 @@ def loop_first_last(values: Iterable[T]) -> Iterable[Tuple[bool, bool, T]]:
         yield first, False, previous_value
         first = False
         previous_value = value
-    yield first, True, previous_value
+    yield first, True, previous_value  # po skončení for-loopu je previous_value posledný prvok

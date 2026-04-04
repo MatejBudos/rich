@@ -9,14 +9,38 @@ from rich.tree import Tree
 
 def test_tree_XRDebugger():
     """
-    Posledná vetva stromu má zobrazovať └── (END).
-    Bug: zobrazuje ├── (FORK) aj pre posledný uzol.
+    Overuje správne vykreslenie vodiacich čiar stromu (guide characters).
 
-    Stack trace:
-        console.print(tree)
-          → Console.render()
-            → Tree.__rich_console__()
-              → make_guide(END, ...)   ← tu je bug, END zamenené za FORK
+    == Ako funguje console.print() ==
+
+    Keď zavoláme console.print(tree), prebehne nasledujúci proces:
+
+    1. Zbieranie renderables (Console.print → _collect_renderables)
+       Vstupné objekty (napr. Tree) sa zabalia do zoznamu tzv. renderables —
+       objektov, ktoré vedia samy seba vykresliť. Každý renderable implementuje
+       metódu __rich_console__(console, options), ktorá vracia RenderResult.
+
+    2. Render pipeline (Console._render_renderables → Console.render)
+       Console.render() je centrálny dispečer: pre každý renderable zavolá jeho
+       __rich_console__() a iteruje výsledok. Výsledkom sú buď:
+         a) Segment — atomická jednotka výstupu (text + štýl), hneď sa yieldue
+         b) vnorený renderable — render() sa zavolá rekurzívne
+
+    3. Vykreslenie stromu (Tree.__rich_console__)
+       Tree iteruje uzly pomocou explicitného zásobníka (stack). Pre každý uzol
+       zavolá _make_guide() aby získal správny vodiaci znak (├──, └──, │ atd.),
+       potom vykreslí label uzla cez console.render_lines() a yieldue Segmenty
+       cez _yield_node_label().
+
+    4. Zápis do buffera (Console._write_to_buffer)
+       Segmenty sa voliteľne orežú na šírku terminálu a zapíšu do výstupného
+       buffera, ktorý sa pri ukončení with-bloku vypíše na výstup.
+
+    == Bug v tomto teste ==
+
+    Posledná vetva stromu má zobrazovať └── (END).
+    Bug: _make_guide() ignoruje parameter index a vždy použije FORK (├──),
+    takže aj posledný uzol dostane ├── namiesto └──.
     """
     tree = Tree("project")
 

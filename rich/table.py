@@ -924,7 +924,7 @@ class Table(JupyterMixin):
                     yield from rendered_cell[line_no]
                 yield new_line
 
-        if _box and first and self.show_header:
+        if _box and last and self.show_header:
             yield _Segment(_box.get_row(widths, "head", edge=show_edge), border_style)  # oddeľovač pod hlavičkou ┡━━━╇━━━┩
             yield new_line
 
@@ -956,7 +956,7 @@ class Table(JupyterMixin):
         show_footer = self.show_footer
         get_style = console.get_style
 
-        for index, (last, first, row_cell) in enumerate(loop_first_last(row_cells)):  # iteruje riadky s príznakmi first/last
+        for index, (first, last, row_cell) in enumerate(loop_first_last(row_cells)):  # iteruje riadky s príznakmi first/last
             header_row = first and show_header
             footer_row = last and show_footer
             row = (

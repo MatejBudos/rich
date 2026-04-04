@@ -1659,6 +1659,37 @@ class Console:
             end=end,
         )
 
+    def _render_renderables(
+        self,
+        renderables: Iterable[RenderableType],
+        render_options: "ConsoleOptions",
+        style: Optional[Union[str, Style]],
+    ) -> List[Segment]:
+        """Preloží zoznam renderovateľných objektov na ploché pole Segment objektov."""
+        segments: List[Segment] = []
+        if style is None:
+            for renderable in renderables:
+                segments.extend(self.render(renderable, render_options))  # spustí render pipeline
+        else:
+            render_style = self.get_style(style)
+            new_line = Segment.line()
+            for renderable in renderables:
+                for line, add_new_line in Segment.split_lines_terminator(
+                    self.render(renderable, render_options)
+                ):
+                    segments.extend(Segment.apply_style(line, render_style))  # aplikuje globálny štýl na každý segment riadku
+                    if add_new_line:
+                        segments.append(new_line)
+        return segments
+
+    def _write_to_buffer(self, segments: List[Segment], crop: bool) -> None:
+        """Zapíše segmenty do výstupného buffera, voliteľne ich oreže na šírku terminálu."""
+        if crop:
+            for line in Segment.split_and_crop_lines(segments, self.width, pad=False):
+                self._buffer.extend(line)
+        else:
+            self._buffer.extend(segments)
+
     def print(
         self,
         *objects: Any,
@@ -1730,37 +1761,13 @@ class Console:
                 highlight=highlight,
             )
 
-            new_segments: List[Segment] = []
-            extend = new_segments.extend
-
-            if style is None:
-                for renderable in renderables:
-                    extend(self.render(renderable, render_options))  # spustí render pipeline
-            else:
-                render_style = self.get_style(style)
-                new_line = Segment.line()
-                for renderable in renderables:
-                    for line, add_new_line in Segment.split_lines_terminator(
-                        self.render(renderable, render_options)
-                    ):
-                        extend(Segment.apply_style(line, render_style))  # aplikuje globálny štýl na každý segment riadku
-                        if add_new_line:
-                            new_segments.append(new_line)
+            new_segments = self._render_renderables(renderables, render_options, style)
 
             if new_line_start:
-                if (
-                    len("".join(segment.text for segment in new_segments).splitlines())
-                    > 1
-                ):
+                if len("".join(s.text for s in new_segments).splitlines()) > 1:
                     new_segments.insert(0, Segment.line())  # vloží prázdny riadok pred viacriadkový výstup
-            if crop:
-                buffer_extend = self._buffer.extend
-                for line in Segment.split_and_crop_lines(
-                    new_segments, self.width, pad=False
-                ):
-                    buffer_extend(line)  # oreže každý riadok na šírku terminálu a zapíše do výstupného buffera
-            else:
-                self._buffer.extend(new_segments)  # bez orezu — zapíše segmenty priamo do buffera
+
+            self._write_to_buffer(new_segments, crop)
 
     def print_json(
         self,

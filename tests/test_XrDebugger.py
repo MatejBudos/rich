@@ -17,12 +17,35 @@ def test_table_XRDebugger():
     """
     Overuje správne vykreslenie rámčeka tabuľky (box-drawing znaky).
 
+    == Ako funguje console.print() ==
+
+    Keď zavoláme console.print(table), prebehne nasledujúci proces:
+
+    1. Zbieranie renderables (Console.print → _collect_renderables)
+       Vstupné objekty (napr. Table) sa zabalia do zoznamu tzv. renderables —
+       objektov, ktoré vedia samy seba vykresliť. Každý renderable implementuje
+       metódu __rich_console__(console, options), ktorá vracia RenderResult.
+
+    2. Render pipeline (Console._render_renderables → Console.render)
+       Console.render() je centrálny dispečer: pre každý renderable zavolá jeho
+       __rich_console__() a iteruje výsledok. Výsledkom sú buď:
+         a) Segment — atomická jednotka výstupu (text + štýl), hneď sa yieldue
+         b) vnorený renderable — render() sa zavolá rekurzívne
+
+    3. Vykreslenie tabuľky (Table.__rich_console__)
+       Table vypočíta šírky stĺpcov, pripraví box znaky (rámček) a zavolá
+       _render_rows(), ktorá iteruje všetky riadky. Pre každý riadok generuje
+       Segment objekty tvoriace okraje a obsah buniek.
+
+    4. Zápis do buffera (Console._write_to_buffer)
+       Segmenty sa voliteľne orežú na šírku terminálu a zapíšu do výstupného
+       buffera, ktorý sa pri ukončení with-bloku vypíše na výstup.
+
+    == Bug v tomto teste ==
+
     Rich Table pri renderovaní používa dva typy čiar:
       - tučné (━━, ┃) pre hlavičku (prvý riadok)
       - tenké (──, │) pre dátové riadky
-    Rozlíšenie zabezpečujú príznaky 'first' a 'last' z loop_first_last().
-    Bug: ich prehodenie v rozbalení tuple spôsobí, že hlavička dostane
-    štýl posledného riadku a posledný riadok dostane štýl hlavičky.
 
     """
     console = Console(

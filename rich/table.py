@@ -472,6 +472,22 @@ class Table(JupyterMixin):
         if self.rows:
             self.rows[-1].end_section = True
 
+    def _render_annotation(
+        self,
+        console: "Console",
+        options: "ConsoleOptions",
+        text: TextType,
+        style: StyleType,
+        justify: "JustifyMethod" = "center",
+    ) -> "RenderResult":
+        """Preloží nadpis alebo popis tabuľky na Segment objekty."""
+        render_text = (
+            console.render_str(text, style=style, highlight=False)
+            if isinstance(text, str)
+            else text
+        )
+        return console.render(render_text, options=options.update(justify=justify))
+
     def __rich_console__(
         self, console: "Console", options: "ConsoleOptions"
     ) -> "RenderResult":
@@ -494,28 +510,41 @@ class Table(JupyterMixin):
             width=table_width, highlight=self.highlight, height=None
         )
 
-        def render_annotation(
-            text: TextType, style: StyleType, justify: "JustifyMethod" = "center"
-        ) -> "RenderResult":
-            render_text = (
-                console.render_str(text, style=style, highlight=False)
-                if isinstance(text, str)
-                else text
-            )
-            return console.render(  # preloží text anotácie na Segment objekty
-                render_text, options=render_options.update(justify=justify)
-            )
-
         if self.title:
-            yield from render_annotation(  # vykreslí nadpis nad tabuľkou
-                self.title,
+            yield from self._render_annotation(  # vykreslí nadpis nad tabuľkou
+                console, render_options, self.title,
                 style=Style.pick_first(self.title_style, "table.title"),
                 justify=self.title_justify,
             )
-        yield from self._render(console, render_options, widths)  # vykreslí riadky a rámček
+
+        table_style = console.get_style(self.style or "")
+        border_style = table_style + console.get_style(self.border_style or "")
+        _column_cells = (
+            self._get_cells(console, column_index, column)  # vykreslí bunky jedného stĺpca
+            for column_index, column in enumerate(self.columns)
+        )
+        row_cells: List[Tuple[_Cell, ...]] = list(zip(*_column_cells))  # transponuje stĺpce na riadky
+        _box = (
+            self.box.substitute(render_options, safe=pick_bool(self.safe_box, console.safe_box))
+            if self.box
+            else None
+        )
+        _box = _box.get_plain_headed_box() if _box and not self.show_header else _box
+        box_segments = self._build_box_segments(_box, border_style) if _box else []
+
+        if _box and self.show_edge:
+            yield Segment(_box.get_top(widths), border_style)  # horný okraj ┏━━━┳━━━┓
+            yield Segment.line()
+
+        yield from self._render_rows(console, render_options, row_cells, widths, _box, box_segments, border_style)
+
+        if _box and self.show_edge:
+            yield Segment(_box.get_bottom(widths), border_style)  # spodný okraj └───┴───┘
+            yield Segment.line()
+
         if self.caption:
-            yield from render_annotation(  # vykreslí popis pod tabuľkou
-                self.caption,
+            yield from self._render_annotation(  # vykreslí popis pod tabuľkou
+                console, render_options, self.caption,
                 style=Style.pick_first(self.caption_style, "table.caption"),
                 justify=self.caption_justify,
             )
@@ -752,62 +781,179 @@ class Table(JupyterMixin):
         )
         return measurement
 
-    def _render(
-        self, console: "Console", options: "ConsoleOptions", widths: List[int]
-    ) -> "RenderResult":
-        table_style = console.get_style(self.style or "")
+    def _build_box_segments(self, _box: "box.Box", border_style: Style) -> List:
+        """Zostaví trojice Segment objektov (ľavý okraj, pravý okraj, zvislý oddeľovač)
+        pre každý typ riadku: hlavičku [0], stredné riadky [1] a pätičku [2]."""
+        _Segment = Segment
+        return [
+            (
+                _Segment(_box.head_left, border_style),
+                _Segment(_box.head_right, border_style),
+                _Segment(_box.head_vertical, border_style),
+            ),
+            (
+                _Segment(_box.mid_left, border_style),
+                _Segment(_box.mid_right, border_style),
+                _Segment(_box.mid_vertical, border_style),
+            ),
+            (
+                _Segment(_box.foot_left, border_style),
+                _Segment(_box.foot_right, border_style),
+                _Segment(_box.foot_vertical, border_style),
+            ),
+        ]
 
-        border_style = table_style + console.get_style(self.border_style or "")
-        _column_cells = (
-            self._get_cells(console, column_index, column)  # vykreslí bunky jedného stĺpca
-            for column_index, column in enumerate(self.columns)
-        )
-
-        row_cells: List[Tuple[_Cell, ...]] = list(zip(*_column_cells))  # transponuje stĺpce na riadky
-        _box = (
-            self.box.substitute(
-                options, safe=pick_bool(self.safe_box, console.safe_box)
+    def _render_cell_lines(
+        self,
+        console: "Console",
+        options: "ConsoleOptions",
+        row_cell: Tuple["_Cell", ...],
+        widths: List[int],
+        get_style: "Callable",
+        row_style: Style,
+    ) -> Tuple[List, int]:
+        """Vykreslí obsah každej bunky riadku na riadky fixnej šírky."""
+        cells: List[List[List[Segment]]] = []
+        max_height = 1
+        for width, cell, column in zip(widths, row_cell, self.columns):
+            render_options = options.update(
+                width=width,
+                justify=column.justify,
+                no_wrap=column.no_wrap,
+                overflow=column.overflow,
+                height=None,
+                highlight=column.highlight,
             )
-            if self.box
-            else None
-        )
-        _box = _box.get_plain_headed_box() if _box and not self.show_header else _box
+            lines = console.render_lines(
+                cell.renderable,
+                render_options,
+                style=get_style(cell.style) + row_style,
+            )
+            max_height = max(max_height, len(lines))
+            cells.append(lines)
+        return cells, max_height
 
-        new_line = Segment.line()
+    def _align_cells(
+        self,
+        cells: List,
+        row_cell: Tuple["_Cell", ...],
+        widths: List[int],
+        max_height: int,
+        header_row: bool,
+        footer_row: bool,
+        get_style: "Callable",
+        row_style: Style,
+    ) -> List:
+        """Zarovná bunky vertikálne a oreže/doplní na rovnakú výšku."""
+        row_height = max(len(cell) for cell in cells)
 
-        columns = self.columns
-        show_header = self.show_header
-        show_footer = self.show_footer
+        def align_cell(
+            cell: List[List[Segment]],
+            vertical: "VerticalAlignMethod",
+            width: int,
+            style: Style,
+        ) -> List[List[Segment]]:
+            if header_row:
+                vertical = "bottom"
+            elif footer_row:
+                vertical = "top"
+            if vertical == "top":
+                return Segment.align_top(cell, width, row_height, style)
+            elif vertical == "middle":
+                return Segment.align_middle(cell, width, row_height, style)
+            return Segment.align_bottom(cell, width, row_height, style)
+
+        return [
+            Segment.set_shape(
+                align_cell(cell, _cell.vertical, width, get_style(_cell.style) + row_style),
+                width,
+                max_height,
+            )
+            for width, _cell, cell in zip(widths, row_cell, cells)
+        ]
+
+    def _yield_row_segments(
+        self,
+        cells: List,
+        max_height: int,
+        first: bool,
+        last: bool,
+        index: int,
+        header_row: bool,
+        end_section: bool,
+        row_cells_count: int,
+        _box: Optional["box.Box"],
+        box_segments: List,
+        widths: List[int],
+        border_style: Style,
+        row_style: Style,
+        new_line: "Segment",
+    ) -> "RenderResult":
+        """Generuje Segment objekty tvorené okrajmi riadku a obsahom buniek."""
+        _Segment = Segment
         show_edge = self.show_edge
+        show_footer = self.show_footer
         show_lines = self.show_lines
         leading = self.leading
 
-        _Segment = Segment
         if _box:
-            box_segments = [
-                (
-                    _Segment(_box.head_left, border_style),
-                    _Segment(_box.head_right, border_style),
-                    _Segment(_box.head_vertical, border_style),
-                ),
-                (
-                    _Segment(_box.mid_left, border_style),
-                    _Segment(_box.mid_right, border_style),
-                    _Segment(_box.mid_vertical, border_style),
-                ),
-                (
-                    _Segment(_box.foot_left, border_style),
-                    _Segment(_box.foot_right, border_style),
-                    _Segment(_box.foot_vertical, border_style),
-                ),
-            ]
-            if show_edge:
-                yield _Segment(_box.get_top(widths), border_style)  # horný okraj ┏━━━┳━━━┓
+            if last and show_footer:
+                yield _Segment(_box.get_row(widths, "foot", edge=show_edge), border_style)  # oddeľovač pred pätičkou
+                yield new_line
+            left, right, _divider = box_segments[0 if first else (2 if last else 1)]  # vyberie znaky pre zvislé okraje tohto riadku
+
+            # If the column divider is whitespace also style it with the row background
+            divider = (
+                _divider
+                if _divider.text.strip()
+                else _Segment(_divider.text, row_style.background_style + _divider.style)
+            )
+            for line_no in range(max_height):
+                if show_edge:
+                    yield left
+                for last_cell, rendered_cell in loop_last(cells):
+                    yield from rendered_cell[line_no]
+                    if not last_cell:
+                        yield divider
+                if show_edge:
+                    yield right
                 yield new_line
         else:
-            box_segments = []
+            for line_no in range(max_height):
+                for rendered_cell in cells:
+                    yield from rendered_cell[line_no]
+                yield new_line
 
-        get_row_style = self.get_row_style
+        if _box and first and self.show_header:
+            yield _Segment(_box.get_row(widths, "head", edge=show_edge), border_style)  # oddeľovač pod hlavičkou ┡━━━╇━━━┩
+            yield new_line
+
+        if _box and (show_lines or leading or end_section):
+            if (
+                not last
+                and not (show_footer and index >= row_cells_count - 2)
+                and not (self.show_header and header_row)
+            ):
+                if leading:
+                    yield _Segment(_box.get_row(widths, "mid", edge=show_edge) * leading, border_style)
+                else:
+                    yield _Segment(_box.get_row(widths, "row", edge=show_edge), border_style)
+                yield new_line
+
+    def _render_rows(
+        self,
+        console: "Console",
+        options: "ConsoleOptions",
+        row_cells: List[Tuple["_Cell", ...]],
+        widths: List[int],
+        _box: Optional["box.Box"],
+        box_segments: List,
+        border_style: Style,
+    ) -> "RenderResult":
+        """Iteruje cez všetky riadky tabuľky a generuje ich Segment reprezentáciu."""
+        new_line = Segment.line()
+        show_header = self.show_header
+        show_footer = self.show_footer
         get_style = console.get_style
 
         for index, (last, first, row_cell) in enumerate(loop_first_last(row_cells)):  # iteruje riadky s príznakmi first/last
@@ -818,121 +964,20 @@ class Table(JupyterMixin):
                 if (not header_row and not footer_row)
                 else None
             )
-            max_height = 1
-            cells: List[List[List[Segment]]] = []
-            if header_row or footer_row:
-                row_style = Style.null()
-            else:
-                row_style = get_style(
-                    get_row_style(console, index - 1 if show_header else index)
-                )
-            for width, cell, column in zip(widths, row_cell, columns):
-                render_options = options.update(
-                    width=width,
-                    justify=column.justify,
-                    no_wrap=column.no_wrap,
-                    overflow=column.overflow,
-                    height=None,
-                    highlight=column.highlight,
-                )
-                lines = console.render_lines(  # preloží obsah bunky na riadky fixnej šírky
-                    cell.renderable,
-                    render_options,
-                    style=get_style(cell.style) + row_style,
-                )
-                max_height = max(max_height, len(lines))
-                cells.append(lines)
+            row_style = (
+                Style.null()
+                if header_row or footer_row
+                else get_style(self.get_row_style(console, index - 1 if show_header else index))
+            )
 
-            row_height = max(len(cell) for cell in cells)
+            cells, max_height = self._render_cell_lines(console, options, row_cell, widths, get_style, row_style)
+            cells = self._align_cells(cells, row_cell, widths, max_height, header_row, footer_row, get_style, row_style)
 
-            def align_cell(
-                cell: List[List[Segment]],
-                vertical: "VerticalAlignMethod",
-                width: int,
-                style: Style,
-            ) -> List[List[Segment]]:
-                if header_row:
-                    vertical = "bottom"
-                elif footer_row:
-                    vertical = "top"
-
-                if vertical == "top":
-                    return _Segment.align_top(cell, width, row_height, style)
-                elif vertical == "middle":
-                    return _Segment.align_middle(cell, width, row_height, style)
-                return _Segment.align_bottom(cell, width, row_height, style)
-
-            cells[:] = [
-                _Segment.set_shape(
-                    align_cell(
-                        cell,
-                        _cell.vertical,
-                        width,
-                        get_style(_cell.style) + row_style,
-                    ),
-                    width,
-                    max_height,
-                )
-                for width, _cell, cell, column in zip(widths, row_cell, cells, columns)
-            ]
-
-            if _box:
-                if last and show_footer:
-                    yield _Segment(
-                        _box.get_row(widths, "foot", edge=show_edge), border_style  # oddeľovač pred päťtičkou
-                    )
-                    yield new_line
-                left, right, _divider = box_segments[0 if first else (2 if last else 1)]  # vyberie znaky pre zvislé okraje tohto riadku
-
-                # If the column divider is whitespace also style it with the row background
-                divider = (
-                    _divider
-                    if _divider.text.strip()
-                    else _Segment(
-                        _divider.text, row_style.background_style + _divider.style
-                    )
-                )
-                for line_no in range(max_height):
-                    if show_edge:
-                        yield left
-                    for last_cell, rendered_cell in loop_last(cells):
-                        yield from rendered_cell[line_no]
-                        if not last_cell:
-                            yield divider
-                    if show_edge:
-                        yield right
-                    yield new_line
-            else:
-                for line_no in range(max_height):
-                    for rendered_cell in cells:
-                        yield from rendered_cell[line_no]
-                    yield new_line
-            if _box and first and show_header:
-                yield _Segment(
-                    _box.get_row(widths, "head", edge=show_edge), border_style  # oddeľovač pod hlavičkou ┡━━━╇━━━┩
-                )
-                yield new_line
-            end_section = row and row.end_section
-            if _box and (show_lines or leading or end_section):
-                if (
-                    not last
-                    and not (show_footer and index >= len(row_cells) - 2)
-                    and not (show_header and header_row)
-                ):
-                    if leading:
-                        yield _Segment(
-                            _box.get_row(widths, "mid", edge=show_edge) * leading,
-                            border_style,
-                        )
-                    else:
-                        yield _Segment(
-                            _box.get_row(widths, "row", edge=show_edge), border_style
-                        )
-                    yield new_line
-
-        if _box and show_edge:
-            yield _Segment(_box.get_bottom(widths), border_style)  # spodný okraj └───┴───┘
-            yield new_line
+            yield from self._yield_row_segments(
+                cells, max_height, first, last, index,
+                header_row, bool(row and row.end_section), len(row_cells),
+                _box, box_segments, widths, border_style, row_style, new_line,
+            )
 
 
 if __name__ == "__main__":  # pragma: no cover

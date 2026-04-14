@@ -83,7 +83,10 @@ class Tree(JupyterMixin):
         self.children.append(node)
         return node
 
-    def _make_guide(self, index: int, style: Style, options: "ConsoleOptions") -> "Segment":
+    def _make_guide(self, 
+                    index: int, 
+                    style: Style, 
+                    options: "ConsoleOptions") -> "Segment":
         """Vytvorí Segment pre jednu úroveň vodiacich čiar stromu.
 
         index určuje typ čiary:
@@ -92,7 +95,6 @@ class Tree(JupyterMixin):
           2 = FORK     — vetvenie (├──) pre uzol uprostred
           3 = END      — koniec (└──) pre posledný uzol na úrovni
         """
-        SPACE, CONTINUE, FORK, END = range(4)
         if options.ascii_only:
             line = self.ASCII_GUIDES[index]
         else:
@@ -148,7 +150,7 @@ class Tree(JupyterMixin):
         while stack:
             stack_node = pop()
             try:
-                last, node = next(stack_node)
+                last, node = next(stack_node)  # načíta nasledujúci uzol; last=True pre posledný uzol
             except StopIteration:
                 levels.pop()
                 if levels:
@@ -159,12 +161,13 @@ class Tree(JupyterMixin):
                 continue
             push(stack_node)
             if last:
-                levels[-1] = self._make_guide(END, levels[-1].style or null_style, options)
+                levels_style = levels[-1].style or null_style
+                levels[-1] = self._make_guide(2, levels_style, options)  # vodiaci znak pre posledny uzol
 
             guide_style = guide_style_stack.current + get_style(node.guide_style)
             style = style_stack.current + get_style(node.style)
             prefix = levels[(2 if self.hide_root else 1):]
-            renderable_lines = console.render_lines(
+            renderable_lines = console.render_lines(  # vykreslí label uzla na riadky fixnej šírky
                 Styled(node.label, style),
                 options.update(
                     width=options.max_width - sum(level.cell_length for level in prefix),
@@ -175,7 +178,7 @@ class Tree(JupyterMixin):
             )
 
             if not (depth == 0 and self.hide_root):
-                yield from self._yield_node_label(
+                yield from self._yield_node_label(  # vydá riadky labelu s vodiacimi znakmi (prefix)
                     console, options, node, prefix, style, last, renderable_lines
                 )
 
@@ -188,7 +191,7 @@ class Tree(JupyterMixin):
                 )
                 style_stack.push(get_style(node.style))
                 guide_style_stack.push(get_style(node.guide_style))
-                push(iter(loop_first(node.children)))  # iteruje deti uzla s príznakom first/last
+                push(iter(loop_last(node.children)))  # iteruje deti uzla s príznakom last
                 depth += 1
 
     def __rich_console__(
@@ -202,12 +205,12 @@ class Tree(JupyterMixin):
 
         stack: List[Iterator[Tuple[bool, "Tree"]]] = []
         levels: List[Segment] = [self._make_guide(CONTINUE, guide_style, options)]
-        stack.append(iter(loop_last([self])))
+        stack.append(iter(loop_last([self])))  # zaháji prechádzanie stromu od koreňa
 
         guide_style_stack = StyleStack(get_style(self.guide_style))
         style_stack = StyleStack(get_style(self.style))
 
-        yield from self._walk_nodes(console, options, stack, levels, guide_style_stack, style_stack)
+        yield from self._walk_nodes(console, options, stack, levels, guide_style_stack, style_stack)  # prechádza uzlami a generuje Segment objekty
 
     def __rich_measure__(
         self, console: "Console", options: "ConsoleOptions"

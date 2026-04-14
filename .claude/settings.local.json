@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs grep:*)",
+      "Bash(python -m pytest tests/test_XrDebugger.py -v)"
+    ]
+  }
+}

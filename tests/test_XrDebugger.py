@@ -43,12 +43,6 @@ def test_table_XRDebugger():
 
     == Bug v tomto teste ==
 
-    Rich Table pri renderovaní používa dva typy čiar:
-      - tučné (━━, ┃) pre hlavičku (prvý riadok)
-      - tenké (──, │) pre dátové riadky
-    Rozlíšenie zabezpečujú príznaky 'first' a 'last' z loop_first_last().
-    Bug: ich prehodenie v rozbalení tuple spôsobí, že hlavička dostane
-    štýl posledného riadku a posledný riadok dostane štýl hlavičky.
 
     """
     console = Console(

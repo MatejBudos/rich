@@ -39,10 +39,7 @@ def test_tree_XRDebugger():
     == Bug v tomto teste ==
 
     Posledná vetva stromu má zobrazovať └── (END).
-    Bug: __rich_console__ používa loop_first() namiesto loop_last() pri iterácii
-    detí uzla. Oba vracajú tuple (flag, value), ale s opačnou sémantikou flagu —
-    preto príznak 'last' obsahuje hodnotu 'first', čo spôsobí, že posledná vetva
-    dostane ├── namiesto └──.
+  
     """
     tree = Tree("project")
 
